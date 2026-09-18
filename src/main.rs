@@ -105,6 +105,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Non-interactive list mode
     if cli.list {
+        banner::print_banner();
         println!("Loaded {} conversations from {}\n", conversations.len(), db_path.display());
         let filtered: Vec<_> = if filter_current {
             println!("Filter: Current directory ({})", cwd.display());
