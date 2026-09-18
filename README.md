@@ -1,10 +1,21 @@
-# agycon
-
 <p align="center">
-  <img src="assets/logo.jpg" width="220" alt="agycon logo" />
+  <img src="assets/logo.jpg" width="240" alt="agycon logo" />
 </p>
 
-Fast, interactive CLI launcher and manager for Google Antigravity (`agy`) conversations, built in Rust.
+<h1 align="center">agycon</h1>
+
+<p align="center">
+  <strong>Fast, interactive CLI launcher and manager for Google Antigravity (<code>agy</code>) conversations, built in Rust.</strong>
+</p>
+
+<p align="center">
+  <a href="#features">Features</a> &bull;
+  <a href="#installation">Installation</a> &bull;
+  <a href="#usage">Usage</a> &bull;
+  <a href="#settings--configuration">Configuration</a>
+</p>
+
+---
 
 ## Features
 
