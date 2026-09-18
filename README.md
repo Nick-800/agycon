@@ -80,6 +80,12 @@ agycon --list
 agycon --all --list
 ```
 
+Display the logo in your terminal:
+
+```bash
+agycon logo
+```
+
 ### Settings & Configuration
 View current configuration:
 

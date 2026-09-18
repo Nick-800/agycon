@@ -43,30 +43,41 @@ enum Commands {
         #[arg(short = 's', long = "set")]
         set_default: Option<DefaultFilter>,
     },
+    /// Display the agycon logo in the terminal
+    Logo,
 }
+
+const LOGO_BYTES: &[u8] = include_bytes!("../assets/logo.jpg");
 
 fn main() -> Result<(), Box<dyn Error>> {
     let cli = Cli::parse();
     let mut config = AppConfig::load();
 
     // Handle subcommands
-    if let Some(Commands::Config { set_default }) = cli.command {
-        if let Some(new_mode) = set_default {
-            config.default_filter = new_mode;
-            config.save()?;
-            println!("Configuration updated: default filter is now '{}'.", new_mode);
-            if let Some(path) = AppConfig::config_path() {
-                println!("Saved to: {}", path.display());
+    match cli.command {
+        Some(Commands::Config { set_default }) => {
+            if let Some(new_mode) = set_default {
+                config.default_filter = new_mode;
+                config.save()?;
+                println!("Configuration updated: default filter is now '{}'.", new_mode);
+                if let Some(path) = AppConfig::config_path() {
+                    println!("Saved to: {}", path.display());
+                }
+            } else {
+                println!("agycon Configuration:");
+                println!("  Default filter: {}", config.default_filter);
+                if let Some(path) = AppConfig::config_path() {
+                    println!("  Config file:    {}", path.display());
+                }
+                println!("\nTo change: agycon config --set <current|all>");
             }
-        } else {
-            println!("agycon Configuration:");
-            println!("  Default filter: {}", config.default_filter);
-            if let Some(path) = AppConfig::config_path() {
-                println!("  Config file:    {}", path.display());
-            }
-            println!("\nTo change: agycon config --set <current|all>");
+            return Ok(());
         }
-        return Ok(());
+        Some(Commands::Logo) => {
+            display_logo()?;
+            return Ok(());
+        }
+        None => {}
     }
 
     // Direct actions
@@ -129,4 +140,28 @@ fn main() -> Result<(), Box<dyn Error>> {
         ui::SelectionResult::ResumeConversation(id) => launcher::launch_conversation(&id),
         ui::SelectionResult::Exit => Ok(()),
     }
+}
+
+fn display_logo() -> Result<(), Box<dyn Error>> {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+
+    // Try chafa first
+    let mut child = Command::new("chafa")
+        .arg("-")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::inherit())
+        .spawn();
+
+    if let Ok(ref mut proc) = child {
+        if let Some(ref mut stdin) = proc.stdin {
+            let _ = stdin.write_all(LOGO_BYTES);
+        }
+        let _ = proc.wait();
+        return Ok(());
+    }
+
+    println!("agycon: Antigravity Conversation Launcher");
+    println!("(Install 'chafa' to render graphic images directly in the terminal)");
+    Ok(())
 }
