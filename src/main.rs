@@ -1,3 +1,4 @@
+mod banner;
 mod config;
 mod db;
 mod launcher;
@@ -132,6 +133,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     // Interactive UI
+    banner::print_banner();
     let result = ui::run_interactive_menu(&conversations, &cwd, filter_current, &mut config)?;
 
     match result {
