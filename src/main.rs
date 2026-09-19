@@ -36,6 +36,10 @@ struct Cli {
     #[arg(short = 'l', long = "list")]
     list: bool,
 
+    /// Automatically approve tool permissions (passes --dangerously-skip-permissions to agy)
+    #[arg(short = 'd', short_alias = 'y', long = "dangerously-skip-permissions", visible_alias = "skip-permissions")]
+    dangerously_skip_permissions: bool,
+
     #[command(subcommand)]
     command: Option<Commands>,
 }
@@ -110,7 +114,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                 }
             } else {
                 match search::run_interactive_search(&conversations)? {
-                    search::SearchMenuResult::Resume(id) => launcher::launch_conversation(&id),
+                    search::SearchMenuResult::Resume { id, dangerously_skip_permissions } => {
+                        launcher::launch_conversation(&id, dangerously_skip_permissions || cli.dangerously_skip_permissions);
+                    }
                     search::SearchMenuResult::Back => {}
                 }
             }
@@ -137,11 +143,11 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Direct actions
     if cli.new {
-        launcher::launch_new();
+        launcher::launch_new(cli.dangerously_skip_permissions);
     }
 
     if cli.continue_latest {
-        launcher::launch_continue();
+        launcher::launch_continue(cli.dangerously_skip_permissions);
     }
 
     let cwd = env::current_dir()?;
@@ -192,9 +198,15 @@ fn main() -> Result<(), Box<dyn Error>> {
     let result = ui::run_interactive_menu(&mut conversations, &cwd, &db_path, filter_current, &mut config)?;
 
     match result {
-        ui::SelectionResult::StartNew => launcher::launch_new(),
-        ui::SelectionResult::ContinueLatest => launcher::launch_continue(),
-        ui::SelectionResult::ResumeConversation(id) => launcher::launch_conversation(&id),
+        ui::SelectionResult::StartNew { dangerously_skip_permissions } => {
+            launcher::launch_new(dangerously_skip_permissions || cli.dangerously_skip_permissions)
+        }
+        ui::SelectionResult::ContinueLatest { dangerously_skip_permissions } => {
+            launcher::launch_continue(dangerously_skip_permissions || cli.dangerously_skip_permissions)
+        }
+        ui::SelectionResult::ResumeConversation { id, dangerously_skip_permissions } => {
+            launcher::launch_conversation(&id, dangerously_skip_permissions || cli.dangerously_skip_permissions)
+        }
         ui::SelectionResult::Exit => Ok(()),
     }
 }

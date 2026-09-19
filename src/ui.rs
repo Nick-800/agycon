@@ -11,6 +11,7 @@ use std::path::Path;
 #[derive(Debug, Clone)]
 pub enum MenuItem {
     StartNew,
+    StartNewDangerously,
     StartNewInWorkspace,
     ContinueLatest,
     SearchTranscripts,
@@ -26,6 +27,7 @@ impl fmt::Display for MenuItem {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             MenuItem::StartNew => write!(f, "[+] Start a new conversation in current workspace"),
+            MenuItem::StartNewDangerously => write!(f, "[!] Start a new conversation (--dangerously-skip-permissions)"),
             MenuItem::StartNewInWorkspace => write!(f, "[>] Start a new conversation in another project..."),
             MenuItem::ContinueLatest => write!(f, "[>] Continue most recent conversation (agy -c)"),
             MenuItem::SearchTranscripts => write!(f, "[?] Search conversation transcripts (full-text)"),
@@ -61,14 +63,14 @@ impl fmt::Display for MenuItem {
 }
 
 pub enum SelectionResult {
-    StartNew,
-    ContinueLatest,
-    ResumeConversation(String),
+    StartNew { dangerously_skip_permissions: bool },
+    ContinueLatest { dangerously_skip_permissions: bool },
+    ResumeConversation { id: String, dangerously_skip_permissions: bool },
     Exit,
 }
 
 enum SubmenuResult {
-    Resume(String),
+    Resume { id: String, dangerously_skip_permissions: bool },
     Back,
 }
 
@@ -102,6 +104,7 @@ pub fn run_interactive_menu(
 
         let mut items = Vec::new();
         items.push(MenuItem::StartNew);
+        items.push(MenuItem::StartNewDangerously);
         items.push(MenuItem::StartNewInWorkspace);
         items.push(MenuItem::ContinueLatest);
         items.push(MenuItem::SearchTranscripts);
@@ -144,7 +147,8 @@ pub fn run_interactive_menu(
             .prompt();
 
         match selection {
-            Ok(MenuItem::StartNew) => return Ok(SelectionResult::StartNew),
+            Ok(MenuItem::StartNew) => return Ok(SelectionResult::StartNew { dangerously_skip_permissions: false }),
+            Ok(MenuItem::StartNewDangerously) => return Ok(SelectionResult::StartNew { dangerously_skip_permissions: true }),
             Ok(MenuItem::StartNewInWorkspace) => {
                 let mut workspaces: Vec<String> = Vec::new();
                 for c in conversations.iter() {
@@ -167,7 +171,7 @@ pub fn run_interactive_menu(
                             let p = Path::new(&custom);
                             if p.exists() {
                                 let _ = std::env::set_current_dir(p);
-                                return Ok(SelectionResult::StartNew);
+                                return Ok(SelectionResult::StartNew { dangerously_skip_permissions: false });
                             } else {
                                 println!("Directory does not exist.");
                                 let _ = Text::new("Press Enter to continue...").prompt();
@@ -178,16 +182,18 @@ pub fn run_interactive_menu(
                         let p = Path::new(&selected);
                         if p.exists() {
                             let _ = std::env::set_current_dir(p);
-                            return Ok(SelectionResult::StartNew);
+                            return Ok(SelectionResult::StartNew { dangerously_skip_permissions: false });
                         }
                     }
                     Err(_) => continue,
                 }
             }
-            Ok(MenuItem::ContinueLatest) => return Ok(SelectionResult::ContinueLatest),
+            Ok(MenuItem::ContinueLatest) => return Ok(SelectionResult::ContinueLatest { dangerously_skip_permissions: false }),
             Ok(MenuItem::SearchTranscripts) => {
                 match search::run_interactive_search(conversations)? {
-                    search::SearchMenuResult::Resume(id) => return Ok(SelectionResult::ResumeConversation(id)),
+                    search::SearchMenuResult::Resume { id, dangerously_skip_permissions } => {
+                        return Ok(SelectionResult::ResumeConversation { id, dangerously_skip_permissions });
+                    }
                     search::SearchMenuResult::Back => continue,
                 }
             }
@@ -214,7 +220,9 @@ pub fn run_interactive_menu(
             }
             Ok(MenuItem::Conversation { conv, .. }) => {
                 match run_conversation_action_menu(&conv, db_path, conversations, config)? {
-                    SubmenuResult::Resume(id) => return Ok(SelectionResult::ResumeConversation(id)),
+                    SubmenuResult::Resume { id, dangerously_skip_permissions } => {
+                        return Ok(SelectionResult::ResumeConversation { id, dangerously_skip_permissions });
+                    }
                     SubmenuResult::Back => continue,
                 }
             }
@@ -226,6 +234,7 @@ pub fn run_interactive_menu(
 #[derive(Debug, Clone)]
 enum ActionChoice {
     Resume,
+    ResumeDangerously,
     Preview,
     ViewPager,
     ExportMarkdown,
@@ -239,6 +248,7 @@ impl fmt::Display for ActionChoice {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ActionChoice::Resume => write!(f, "[>] Resume conversation in agy"),
+            ActionChoice::ResumeDangerously => write!(f, "[!] Resume with --dangerously-skip-permissions"),
             ActionChoice::Preview => write!(f, "[?] View preview & latest turns"),
             ActionChoice::ViewPager => write!(f, "[#] View full transcript in terminal pager"),
             ActionChoice::ExportMarkdown => write!(f, "[v] Export transcript to Markdown file"),
@@ -272,6 +282,7 @@ fn run_conversation_action_menu(
         let is_pinned = config.is_pinned(&current_conv.id);
         let options = vec![
             ActionChoice::Resume,
+            ActionChoice::ResumeDangerously,
             ActionChoice::Preview,
             ActionChoice::ViewPager,
             ActionChoice::ExportMarkdown,
@@ -284,7 +295,18 @@ fn run_conversation_action_menu(
         let action = Select::new("Choose an action:", options).prompt();
 
         match action {
-            Ok(ActionChoice::Resume) => return Ok(SubmenuResult::Resume(current_conv.id.clone())),
+            Ok(ActionChoice::Resume) => {
+                return Ok(SubmenuResult::Resume {
+                    id: current_conv.id.clone(),
+                    dangerously_skip_permissions: false,
+                })
+            }
+            Ok(ActionChoice::ResumeDangerously) => {
+                return Ok(SubmenuResult::Resume {
+                    id: current_conv.id.clone(),
+                    dangerously_skip_permissions: true,
+                })
+            }
             Ok(ActionChoice::Preview) => {
                 println!("\n--- Summary Preview ---");
                 if current_conv.preview.trim().is_empty() {
@@ -313,9 +335,25 @@ fn run_conversation_action_menu(
                 }
                 println!("--------------------------------------------------------------------------------");
 
-                let post_preview = Select::new("Action:", vec!["Resume conversation", "Back to session menu"]).prompt();
+                let post_preview = Select::new(
+                    "Action:",
+                    vec![
+                        "Resume conversation",
+                        "Resume with --dangerously-skip-permissions",
+                        "Back to session menu",
+                    ],
+                )
+                .prompt();
                 if let Ok("Resume conversation") = post_preview {
-                    return Ok(SubmenuResult::Resume(current_conv.id.clone()));
+                    return Ok(SubmenuResult::Resume {
+                        id: current_conv.id.clone(),
+                        dangerously_skip_permissions: false,
+                    });
+                } else if let Ok("Resume with --dangerously-skip-permissions") = post_preview {
+                    return Ok(SubmenuResult::Resume {
+                        id: current_conv.id.clone(),
+                        dangerously_skip_permissions: true,
+                    });
                 }
             }
             Ok(ActionChoice::ViewPager) => {

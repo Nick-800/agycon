@@ -61,7 +61,10 @@ pub fn search_all(query: &str, conversations: &[ConversationRecord]) -> Vec<Sear
 }
 
 pub enum SearchMenuResult {
-    Resume(String),
+    Resume {
+        id: String,
+        dangerously_skip_permissions: bool,
+    },
     Back,
 }
 
@@ -109,9 +112,25 @@ pub fn run_interactive_search(conversations: &[ConversationRecord]) -> Result<Se
                 println!("  Snippet:   \"{}\"", hit.snippet);
                 println!();
 
-                let action = Select::new("Action:", vec!["[>] Resume this conversation", "[<] Back"]).prompt();
+                let action = Select::new(
+                    "Action:",
+                    vec![
+                        "[>] Resume this conversation",
+                        "[!] Resume with --dangerously-skip-permissions",
+                        "[<] Back",
+                    ],
+                )
+                .prompt();
                 if let Ok("[>] Resume this conversation") = action {
-                    return Ok(SearchMenuResult::Resume(hit.conv.id.clone()));
+                    return Ok(SearchMenuResult::Resume {
+                        id: hit.conv.id.clone(),
+                        dangerously_skip_permissions: false,
+                    });
+                } else if let Ok("[!] Resume with --dangerously-skip-permissions") = action {
+                    return Ok(SearchMenuResult::Resume {
+                        id: hit.conv.id.clone(),
+                        dangerously_skip_permissions: true,
+                    });
                 }
             }
             Ok(SearchMenuResult::Back)
