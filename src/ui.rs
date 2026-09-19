@@ -1,5 +1,7 @@
 use crate::config::{AppConfig, DefaultFilter};
 use crate::db::{self, ConversationRecord, TimeframeFilter};
+use crate::search;
+use crate::stats;
 use crate::transcript;
 use inquire::{Confirm, Select, Text};
 use std::fmt;
@@ -9,6 +11,8 @@ use std::path::Path;
 pub enum MenuItem {
     StartNew,
     ContinueLatest,
+    SearchTranscripts,
+    ViewStats,
     ToggleView { showing_current_only: bool },
     ToggleTimeframe { current: TimeframeFilter },
     ChangeDefaultFilter,
@@ -20,6 +24,8 @@ impl fmt::Display for MenuItem {
         match self {
             MenuItem::StartNew => write!(f, "[+] Start a new conversation"),
             MenuItem::ContinueLatest => write!(f, "[>] Continue most recent conversation (agy -c)"),
+            MenuItem::SearchTranscripts => write!(f, "[?] Search conversation transcripts (full-text)"),
+            MenuItem::ViewStats => write!(f, "[%] View usage statistics and storage footprint"),
             MenuItem::ToggleView { showing_current_only: true } => {
                 write!(f, "[~] View all workspaces (currently: current dir only)")
             }
@@ -81,6 +87,8 @@ pub fn run_interactive_menu(
         let mut items = Vec::new();
         items.push(MenuItem::StartNew);
         items.push(MenuItem::ContinueLatest);
+        items.push(MenuItem::SearchTranscripts);
+        items.push(MenuItem::ViewStats);
         items.push(MenuItem::ToggleView {
             showing_current_only: filter_current,
         });
@@ -116,6 +124,17 @@ pub fn run_interactive_menu(
         match selection {
             Ok(MenuItem::StartNew) => return Ok(SelectionResult::StartNew),
             Ok(MenuItem::ContinueLatest) => return Ok(SelectionResult::ContinueLatest),
+            Ok(MenuItem::SearchTranscripts) => {
+                match search::run_interactive_search(conversations)? {
+                    search::SearchMenuResult::Resume(id) => return Ok(SelectionResult::ResumeConversation(id)),
+                    search::SearchMenuResult::Back => continue,
+                }
+            }
+            Ok(MenuItem::ViewStats) => {
+                stats::print_stats(conversations);
+                let _ = Text::new("Press Enter to continue...").prompt();
+                continue;
+            }
             Ok(MenuItem::ToggleView { .. }) => {
                 filter_current = !filter_current;
                 continue;

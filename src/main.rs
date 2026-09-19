@@ -2,6 +2,8 @@ mod banner;
 mod config;
 mod db;
 mod launcher;
+mod search;
+mod stats;
 mod transcript;
 mod ui;
 
@@ -45,6 +47,13 @@ enum Commands {
         #[arg(short = 's', long = "set")]
         set_default: Option<DefaultFilter>,
     },
+    /// View conversation usage statistics and storage footprint
+    Stats,
+    /// Search full transcripts for keywords
+    Search {
+        /// Keyword query to search for
+        query: Option<String>,
+    },
     /// Display the agycon logo in the terminal
     Logo,
 }
@@ -72,6 +81,29 @@ fn main() -> Result<(), Box<dyn Error>> {
                     println!("  Config file:    {}", path.display());
                 }
                 println!("\nTo change: agycon config --set <current|all>");
+            }
+            return Ok(());
+        }
+        Some(Commands::Stats) => {
+            let db_path = db::locate_db_path()?;
+            let conversations = db::load_conversations(&db_path)?;
+            stats::print_stats(&conversations);
+            return Ok(());
+        }
+        Some(Commands::Search { query }) => {
+            let db_path = db::locate_db_path()?;
+            let conversations = db::load_conversations(&db_path)?;
+            if let Some(q) = query {
+                let hits = search::search_all(&q, &conversations);
+                println!("Found {} matching turn(s) for '{}':\n", hits.len(), q);
+                for hit in hits {
+                    println!("{}", hit);
+                }
+            } else {
+                match search::run_interactive_search(&conversations)? {
+                    search::SearchMenuResult::Resume(id) => launcher::launch_conversation(&id),
+                    search::SearchMenuResult::Back => {}
+                }
             }
             return Ok(());
         }
