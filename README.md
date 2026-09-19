@@ -20,13 +20,17 @@
 ## Features
 
 - **Interactive Conversation Picker**: Fuzzy search across past Antigravity conversations using keyboard navigation and live search.
-- **Direct Actions**:
-  - `[+] Start a new conversation` (`agy`)
-  - `[>] Continue most recent conversation` (`agy -c`)
-  - Select any past conversation to resume (`agy --conversation <id>`)
-- **Smart Workspace Filtering**:
+- **Conversation Action Submenu**:
+  - `[>] Resume`: Launch directly into `agy`.
+  - `[?] Preview`: View conversation summary, timestamps, turn counts, and latest messages.
+  - `[#] Pager Viewer`: Read the full transcript directly in your terminal pager (`less -R`).
+  - `[v] Markdown Export`: Export clean Markdown files with headers and turn formatting.
+  - `[e] Rename`: Rename auto-generated session titles directly in SQLite.
+  - `[x] Delete`: Safely delete sessions with option to purge database and brain logs from disk.
+- **Smart Workspace & Timeframe Filtering**:
   - Filters strictly to the current working directory by default.
-  - Quick in-menu toggle or `--all` flag to browse conversations across all projects.
+  - In-menu toggle to switch between current workspace and all projects.
+  - In-menu timeframe filter cycling through `All Time`, `Last 24 Hours`, `Last 7 Days`, and `Last 30 Days`.
 - **Configurable Default Behavior**:
   - Persistently toggle whether to filter to the current directory by default or show all workspaces.
   - Stored in `~/.config/agycon/config.json`.
