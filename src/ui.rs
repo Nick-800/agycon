@@ -1,3 +1,4 @@
+use crate::batch;
 use crate::config::{AppConfig, DefaultFilter};
 use crate::db::{self, ConversationRecord, TimeframeFilter};
 use crate::search;
@@ -14,6 +15,7 @@ pub enum MenuItem {
     ContinueLatest,
     SearchTranscripts,
     ViewStats,
+    BatchOperations,
     ToggleView { showing_current_only: bool },
     ToggleTimeframe { current: TimeframeFilter },
     ChangeDefaultFilter,
@@ -28,6 +30,7 @@ impl fmt::Display for MenuItem {
             MenuItem::ContinueLatest => write!(f, "[>] Continue most recent conversation (agy -c)"),
             MenuItem::SearchTranscripts => write!(f, "[?] Search conversation transcripts (full-text)"),
             MenuItem::ViewStats => write!(f, "[%] View usage statistics and storage footprint"),
+            MenuItem::BatchOperations => write!(f, "[*] Batch operations (bulk export / bulk delete)"),
             MenuItem::ToggleView { showing_current_only: true } => {
                 write!(f, "[~] View all workspaces (currently: current dir only)")
             }
@@ -109,6 +112,7 @@ pub fn run_interactive_menu(
         items.push(MenuItem::ToggleTimeframe {
             current: timeframe_filter,
         });
+        items.push(MenuItem::BatchOperations);
         items.push(MenuItem::ChangeDefaultFilter);
 
         for conv in &filtered {
@@ -202,6 +206,10 @@ pub fn run_interactive_menu(
             }
             Ok(MenuItem::ChangeDefaultFilter) => {
                 prompt_change_settings(config)?;
+                continue;
+            }
+            Ok(MenuItem::BatchOperations) => {
+                batch::run_batch_menu(conversations, db_path)?;
                 continue;
             }
             Ok(MenuItem::Conversation { conv, .. }) => {

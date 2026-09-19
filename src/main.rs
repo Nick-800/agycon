@@ -1,4 +1,5 @@
 mod banner;
+mod batch;
 mod config;
 mod db;
 mod launcher;
@@ -54,6 +55,14 @@ enum Commands {
         /// Keyword query to search for
         query: Option<String>,
     },
+    /// Manage multiple conversations in bulk (export, delete)
+    Batch,
+    /// Generate shell auto-completion scripts (bash, zsh, fish, powershell, elvish)
+    Completion {
+        /// Shell to generate completions for
+        #[arg(value_enum)]
+        shell: clap_complete::Shell,
+    },
     /// Display the agycon logo in the terminal
     Logo,
 }
@@ -105,6 +114,18 @@ fn main() -> Result<(), Box<dyn Error>> {
                     search::SearchMenuResult::Back => {}
                 }
             }
+            return Ok(());
+        }
+        Some(Commands::Batch) => {
+            let db_path = db::locate_db_path()?;
+            let mut conversations = db::load_conversations(&db_path)?;
+            batch::run_batch_menu(&mut conversations, &db_path)?;
+            return Ok(());
+        }
+        Some(Commands::Completion { shell }) => {
+            use clap::CommandFactory;
+            let mut cmd = Cli::command();
+            clap_complete::generate(shell, &mut cmd, "agycon", &mut std::io::stdout());
             return Ok(());
         }
         Some(Commands::Logo) => {

@@ -95,6 +95,45 @@ agycon --list
 agycon --all --list
 ```
 
+### Full-Text Search
+Search through conversation messages and transcripts:
+
+```bash
+# Direct CLI search
+agycon search "sqlite"
+
+# Interactive search UI
+agycon search
+```
+
+### Analytics & Statistics
+View system-wide activity metrics and on-disk storage usage:
+
+```bash
+agycon stats
+```
+
+### Batch Operations
+Bulk-select conversations with checkboxes to export to Markdown or permanently delete:
+
+```bash
+agycon batch
+```
+
+### Shell Auto-Completion
+Generate autocompletion scripts for your shell:
+
+```bash
+# Bash
+agycon completion bash > ~/.local/share/bash-completion/completions/agycon
+
+# Zsh
+agycon completion zsh > ~/.zfunc/_agycon
+
+# Fish
+agycon completion fish > ~/.config/fish/completions/agycon.fish
+```
+
 Display the logo in your terminal:
 
 ```bash
