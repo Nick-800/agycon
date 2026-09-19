@@ -35,17 +35,33 @@ impl std::str::FromStr for DefaultFilter {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     pub default_filter: DefaultFilter,
+    #[serde(default)]
+    pub pinned_ids: Vec<String>,
 }
 
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
             default_filter: DefaultFilter::Current,
+            pinned_ids: Vec::new(),
         }
     }
 }
 
 impl AppConfig {
+    pub fn is_pinned(&self, id: &str) -> bool {
+        self.pinned_ids.iter().any(|p| p == id)
+    }
+
+    pub fn toggle_pin(&mut self, id: &str) -> bool {
+        if let Some(pos) = self.pinned_ids.iter().position(|p| p == id) {
+            self.pinned_ids.remove(pos);
+            false
+        } else {
+            self.pinned_ids.push(id.to_string());
+            true
+        }
+    }
     pub fn config_path() -> Option<PathBuf> {
         dirs::config_dir().map(|dir| dir.join("agycon").join("config.json"))
     }

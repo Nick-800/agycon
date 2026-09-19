@@ -10,19 +10,21 @@ use std::path::Path;
 #[derive(Debug, Clone)]
 pub enum MenuItem {
     StartNew,
+    StartNewInWorkspace,
     ContinueLatest,
     SearchTranscripts,
     ViewStats,
     ToggleView { showing_current_only: bool },
     ToggleTimeframe { current: TimeframeFilter },
     ChangeDefaultFilter,
-    Conversation(ConversationRecord),
+    Conversation { conv: ConversationRecord, is_pinned: bool },
 }
 
 impl fmt::Display for MenuItem {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            MenuItem::StartNew => write!(f, "[+] Start a new conversation"),
+            MenuItem::StartNew => write!(f, "[+] Start a new conversation in current workspace"),
+            MenuItem::StartNewInWorkspace => write!(f, "[>] Start a new conversation in another project..."),
             MenuItem::ContinueLatest => write!(f, "[>] Continue most recent conversation (agy -c)"),
             MenuItem::SearchTranscripts => write!(f, "[?] Search conversation transcripts (full-text)"),
             MenuItem::ViewStats => write!(f, "[%] View usage statistics and storage footprint"),
@@ -38,17 +40,18 @@ impl fmt::Display for MenuItem {
             MenuItem::ChangeDefaultFilter => {
                 write!(f, "[*] Configure default filter setting")
             }
-            MenuItem::Conversation(conv) => {
+            MenuItem::Conversation { conv, is_pinned } => {
+                let pin_tag = if *is_pinned { "[PIN]" } else { "     " };
                 let time_tag = format!("[{}]", conv.relative_time());
-                let title_trimmed = if conv.title.len() > 42 {
-                    format!("{}...", &conv.title[..39])
+                let title_trimmed = if conv.title.len() > 38 {
+                    format!("{}...", &conv.title[..35])
                 } else {
                     conv.title.clone()
                 };
                 let steps_tag = format!("({} steps)", conv.step_count);
                 let ws = conv.primary_workspace_display();
 
-                write!(f, "{:<12} {:<42} {:<11} | {}", time_tag, title_trimmed, steps_tag, ws)
+                write!(f, "{} {:<10} {:<38} {:<11} | {}", pin_tag, time_tag, title_trimmed, steps_tag, ws)
             }
         }
     }
@@ -77,15 +80,26 @@ pub fn run_interactive_menu(
     let mut timeframe_filter = TimeframeFilter::AllTime;
 
     loop {
-        let filtered: Vec<ConversationRecord> = conversations
+        let mut filtered: Vec<ConversationRecord> = conversations
             .iter()
             .filter(|c| !filter_current || c.matches_workspace(cwd))
             .filter(|c| c.matches_timeframe(timeframe_filter))
             .cloned()
             .collect();
 
+        filtered.sort_by(|a, b| {
+            let a_pinned = config.is_pinned(&a.id);
+            let b_pinned = config.is_pinned(&b.id);
+            match (a_pinned, b_pinned) {
+                (true, false) => std::cmp::Ordering::Less,
+                (false, true) => std::cmp::Ordering::Greater,
+                _ => std::cmp::Ordering::Equal,
+            }
+        });
+
         let mut items = Vec::new();
         items.push(MenuItem::StartNew);
+        items.push(MenuItem::StartNewInWorkspace);
         items.push(MenuItem::ContinueLatest);
         items.push(MenuItem::SearchTranscripts);
         items.push(MenuItem::ViewStats);
@@ -98,7 +112,11 @@ pub fn run_interactive_menu(
         items.push(MenuItem::ChangeDefaultFilter);
 
         for conv in &filtered {
-            items.push(MenuItem::Conversation(conv.clone()));
+            let is_pinned = config.is_pinned(&conv.id);
+            items.push(MenuItem::Conversation {
+                conv: conv.clone(),
+                is_pinned,
+            });
         }
 
         let prompt_text = if filter_current {
@@ -123,6 +141,45 @@ pub fn run_interactive_menu(
 
         match selection {
             Ok(MenuItem::StartNew) => return Ok(SelectionResult::StartNew),
+            Ok(MenuItem::StartNewInWorkspace) => {
+                let mut workspaces: Vec<String> = Vec::new();
+                for c in conversations.iter() {
+                    for p in &c.workspace_paths {
+                        let path_str = p.to_string_lossy().to_string();
+                        if !workspaces.contains(&path_str) && p.exists() {
+                            workspaces.push(path_str);
+                        }
+                    }
+                }
+                workspaces.sort();
+                workspaces.push("[+] Enter custom directory path...".to_string());
+                workspaces.push("[<] Back".to_string());
+
+                let ws_choice = Select::new("Choose project workspace to launch agy:", workspaces).prompt();
+                match ws_choice {
+                    Ok(ref sel) if sel == "[<] Back" => continue,
+                    Ok(ref sel) if sel == "[+] Enter custom directory path..." => {
+                        if let Ok(custom) = Text::new("Directory path:").prompt() {
+                            let p = Path::new(&custom);
+                            if p.exists() {
+                                let _ = std::env::set_current_dir(p);
+                                return Ok(SelectionResult::StartNew);
+                            } else {
+                                println!("Directory does not exist.");
+                                let _ = Text::new("Press Enter to continue...").prompt();
+                            }
+                        }
+                    }
+                    Ok(selected) => {
+                        let p = Path::new(&selected);
+                        if p.exists() {
+                            let _ = std::env::set_current_dir(p);
+                            return Ok(SelectionResult::StartNew);
+                        }
+                    }
+                    Err(_) => continue,
+                }
+            }
             Ok(MenuItem::ContinueLatest) => return Ok(SelectionResult::ContinueLatest),
             Ok(MenuItem::SearchTranscripts) => {
                 match search::run_interactive_search(conversations)? {
@@ -147,8 +204,8 @@ pub fn run_interactive_menu(
                 prompt_change_settings(config)?;
                 continue;
             }
-            Ok(MenuItem::Conversation(conv)) => {
-                match run_conversation_action_menu(&conv, db_path, conversations)? {
+            Ok(MenuItem::Conversation { conv, .. }) => {
+                match run_conversation_action_menu(&conv, db_path, conversations, config)? {
                     SubmenuResult::Resume(id) => return Ok(SelectionResult::ResumeConversation(id)),
                     SubmenuResult::Back => continue,
                 }
@@ -165,6 +222,7 @@ enum ActionChoice {
     ViewPager,
     ExportMarkdown,
     Rename,
+    TogglePin(bool),
     Delete,
     Back,
 }
@@ -177,6 +235,8 @@ impl fmt::Display for ActionChoice {
             ActionChoice::ViewPager => write!(f, "[#] View full transcript in terminal pager"),
             ActionChoice::ExportMarkdown => write!(f, "[v] Export transcript to Markdown file"),
             ActionChoice::Rename => write!(f, "[e] Rename conversation title"),
+            ActionChoice::TogglePin(true) => write!(f, "[p] Unpin conversation from top of list"),
+            ActionChoice::TogglePin(false) => write!(f, "[p] Pin conversation to top of list"),
             ActionChoice::Delete => write!(f, "[x] Delete conversation"),
             ActionChoice::Back => write!(f, "[<] Back to conversation list"),
         }
@@ -187,6 +247,7 @@ fn run_conversation_action_menu(
     conv: &ConversationRecord,
     db_path: &Path,
     conversations: &mut Vec<ConversationRecord>,
+    config: &mut AppConfig,
 ) -> Result<SubmenuResult, Box<dyn std::error::Error>> {
     let mut current_conv = conv.clone();
 
@@ -200,12 +261,14 @@ fn run_conversation_action_menu(
         println!("Steps:     {}", current_conv.step_count);
         println!("================================================================================");
 
+        let is_pinned = config.is_pinned(&current_conv.id);
         let options = vec![
             ActionChoice::Resume,
             ActionChoice::Preview,
             ActionChoice::ViewPager,
             ActionChoice::ExportMarkdown,
             ActionChoice::Rename,
+            ActionChoice::TogglePin(is_pinned),
             ActionChoice::Delete,
             ActionChoice::Back,
         ];
@@ -305,6 +368,15 @@ fn run_conversation_action_menu(
                             Err(e) => eprintln!("Error renaming conversation: {e}"),
                         }
                     }
+                }
+            }
+            Ok(ActionChoice::TogglePin(_)) => {
+                let now_pinned = config.toggle_pin(&current_conv.id);
+                let _ = config.save();
+                if now_pinned {
+                    println!("\nPinned session '{}' to the top of the list.\n", current_conv.title);
+                } else {
+                    println!("\nUnpinned session '{}'.\n", current_conv.title);
                 }
             }
             Ok(ActionChoice::Delete) => {
