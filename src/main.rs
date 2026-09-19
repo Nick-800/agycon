@@ -2,6 +2,7 @@ mod banner;
 mod config;
 mod db;
 mod launcher;
+mod transcript;
 mod ui;
 
 use clap::{Parser, Subcommand};

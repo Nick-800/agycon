@@ -167,3 +167,43 @@ pub fn load_conversations(db_path: &Path) -> Result<Vec<ConversationRecord>, Box
 
     Ok(records)
 }
+
+pub fn rename_conversation(
+    db_path: &Path,
+    conversation_id: &str,
+    new_title: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let conn = Connection::open_with_flags(db_path, OpenFlags::SQLITE_OPEN_READ_WRITE)?;
+    conn.execute(
+        "UPDATE conversation_summaries SET title = ?1 WHERE conversation_id = ?2",
+        [new_title, conversation_id],
+    )?;
+    Ok(())
+}
+
+pub fn delete_conversation(
+    db_path: &Path,
+    conversation_id: &str,
+    purge_files: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let conn = Connection::open_with_flags(db_path, OpenFlags::SQLITE_OPEN_READ_WRITE)?;
+    conn.execute(
+        "DELETE FROM conversation_summaries WHERE conversation_id = ?1",
+        [conversation_id],
+    )?;
+
+    if purge_files {
+        if let Some(home) = dirs::home_dir() {
+            let conv_db = home.join(format!(".gemini/antigravity-cli/conversations/{conversation_id}.db"));
+            let conv_shm = home.join(format!(".gemini/antigravity-cli/conversations/{conversation_id}.db-shm"));
+            let conv_wal = home.join(format!(".gemini/antigravity-cli/conversations/{conversation_id}.db-wal"));
+            let brain_dir = home.join(format!(".gemini/antigravity-cli/brain/{conversation_id}"));
+
+            let _ = std::fs::remove_file(conv_db);
+            let _ = std::fs::remove_file(conv_shm);
+            let _ = std::fs::remove_file(conv_wal);
+            let _ = std::fs::remove_dir_all(brain_dir);
+        }
+    }
+    Ok(())
+}
