@@ -180,11 +180,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         for conv in &filtered {
             let time_tag = format!("[{}]", conv.relative_time());
-            let title_trimmed = if conv.title.len() > 42 {
-                format!("{}...", &conv.title[..39])
-            } else {
-                conv.title.clone()
-            };
+            let title_trimmed = db::truncate_with_ellipsis(&conv.title, 42);
             let steps_tag = format!("({} steps)", conv.step_count);
             println!("{:<12} {:<42} {:<11} | {}", time_tag, title_trimmed, steps_tag, conv.primary_workspace_display());
         }

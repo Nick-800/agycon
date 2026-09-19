@@ -13,11 +13,7 @@ struct BatchItem {
 impl fmt::Display for BatchItem {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let time_tag = format!("[{}]", self.conv.relative_time());
-        let title_trimmed = if self.conv.title.len() > 36 {
-            format!("{}...", &self.conv.title[..33])
-        } else {
-            self.conv.title.clone()
-        };
+        let title_trimmed = db::truncate_with_ellipsis(&self.conv.title, 36);
         let ws = self.conv.primary_workspace_display();
 
         write!(f, "{:<10} {:<36} ({} steps) | {}", time_tag, title_trimmed, self.conv.step_count, ws)

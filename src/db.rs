@@ -142,13 +142,23 @@ impl ConversationRecord {
                 format!("{}mo ago", duration.num_days() / 30)
             }
         } else {
-            // Fallback: take YYYY-MM-DD
-            if self.last_modified_time.len() >= 10 {
-                self.last_modified_time[0..10].to_string()
+            if self.last_modified_time.chars().count() >= 10 {
+                self.last_modified_time.chars().take(10).collect()
             } else {
                 self.last_modified_time.clone()
             }
         }
+    }
+}
+
+pub fn truncate_with_ellipsis(s: &str, max_chars: usize) -> String {
+    let char_count = s.chars().count();
+    if char_count > max_chars {
+        let keep = max_chars.saturating_sub(3);
+        let prefix: String = s.chars().take(keep).collect();
+        format!("{}...", prefix)
+    } else {
+        s.to_string()
     }
 }
 
@@ -201,11 +211,7 @@ pub fn load_conversations(db_path: &Path) -> Result<Vec<ConversationRecord>, Box
                 "Untitled conversation".to_string()
             } else {
                 let first_line = preview.lines().next().unwrap_or("Untitled conversation");
-                if first_line.len() > 60 {
-                    format!("{}...", &first_line[..57])
-                } else {
-                    first_line.to_string()
-                }
+                truncate_with_ellipsis(first_line, 60)
             }
         } else {
             title
@@ -263,4 +269,32 @@ pub fn delete_conversation(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_truncate_with_ellipsis_ascii() {
+        assert_eq!(truncate_with_ellipsis("hello world", 5), "he...");
+        assert_eq!(truncate_with_ellipsis("hello", 5), "hello");
+        assert_eq!(truncate_with_ellipsis("hi", 5), "hi");
+    }
+
+    #[test]
+    fn test_truncate_with_ellipsis_multibyte() {
+        let arabic = "مشروع antigravity الجديد لتطوير الأدوات";
+        let truncated = truncate_with_ellipsis(arabic, 10);
+        assert_eq!(truncated.chars().count(), 10);
+        assert!(truncated.ends_with("..."));
+
+        let cjk = "こんにちは世界プログラミング";
+        let truncated_cjk = truncate_with_ellipsis(cjk, 6);
+        assert_eq!(truncated_cjk, "こんに...");
+
+        let cyrillic = "Привет мир программирование";
+        let truncated_cyr = truncate_with_ellipsis(cyrillic, 9);
+        assert_eq!(truncated_cyr, "Привет...");
+    }
 }

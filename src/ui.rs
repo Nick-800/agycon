@@ -48,11 +48,7 @@ impl fmt::Display for MenuItem {
             MenuItem::Conversation { conv, is_pinned } => {
                 let pin_tag = if *is_pinned { "[PIN]" } else { "     " };
                 let time_tag = format!("[{}]", conv.relative_time());
-                let title_trimmed = if conv.title.len() > 38 {
-                    format!("{}...", &conv.title[..35])
-                } else {
-                    conv.title.clone()
-                };
+                let title_trimmed = db::truncate_with_ellipsis(&conv.title, 38);
                 let steps_tag = format!("({} steps)", conv.step_count);
                 let ws = conv.primary_workspace_display();
 
@@ -322,11 +318,7 @@ fn run_conversation_action_menu(
 
                     println!("\n--- Recent Turns ({}-{} of {}) ---", start + 1, total, total);
                     for t in recent {
-                        let content_preview = if t.content.len() > 200 {
-                            format!("{}...", &t.content[..197])
-                        } else {
-                            t.content.clone()
-                        };
+                        let content_preview = db::truncate_with_ellipsis(&t.content, 200);
                         println!("[{} ({}):] {}", t.role, t.timestamp, content_preview.replace('\n', " "));
                         if !t.tool_summary.is_empty() {
                             println!("  Tools called: {}", t.tool_summary.join(", "));

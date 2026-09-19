@@ -1,4 +1,4 @@
-use crate::db::ConversationRecord;
+use crate::db::{self, ConversationRecord};
 use crate::transcript;
 use inquire::{Select, Text};
 use std::fmt;
@@ -13,18 +13,10 @@ pub struct SearchHit {
 impl fmt::Display for SearchHit {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let time_tag = format!("[{}]", self.conv.relative_time());
-        let title = if self.conv.title.len() > 30 {
-            format!("{}...", &self.conv.title[..27])
-        } else {
-            self.conv.title.clone()
-        };
+        let title = db::truncate_with_ellipsis(&self.conv.title, 30);
 
         let snippet_clean = self.snippet.replace('\n', " ");
-        let snippet_trimmed = if snippet_clean.len() > 40 {
-            format!("{}...", &snippet_clean[..37])
-        } else {
-            snippet_clean
-        };
+        let snippet_trimmed = db::truncate_with_ellipsis(&snippet_clean, 40);
 
         write!(f, "{:<10} {:<30} | {}: \"{}\"", time_tag, title, self.turn_role, snippet_trimmed)
     }
@@ -37,10 +29,15 @@ pub fn search_all(query: &str, conversations: &[ConversationRecord]) -> Vec<Sear
     for conv in conversations {
         if let Ok(turns) = transcript::load_transcript(&conv.id) {
             for turn in turns {
-                if let Some(pos) = turn.content.to_lowercase().find(&q_lower) {
-                    let start = pos.saturating_sub(25);
-                    let end = (pos + query.len() + 35).min(turn.content.len());
-                    let snippet = turn.content[start..end].trim().to_string();
+                let content_chars: Vec<char> = turn.content.chars().collect();
+                let content_lower: String = content_chars.iter().collect::<String>().to_lowercase();
+                if let Some(byte_pos) = content_lower.find(&q_lower) {
+                    let match_char_idx = content_lower[..byte_pos].chars().count();
+                    let query_char_len = q_lower.chars().count();
+                    let start_char = match_char_idx.saturating_sub(25);
+                    let end_char = (match_char_idx + query_char_len + 35).min(content_chars.len());
+                    let snippet: String = content_chars[start_char..end_char].iter().collect();
+                    let snippet = snippet.trim().to_string();
 
                     hits.push(SearchHit {
                         conv: conv.clone(),
@@ -136,5 +133,30 @@ pub fn run_interactive_search(conversations: &[ConversationRecord]) -> Result<Se
             Ok(SearchMenuResult::Back)
         }
         Err(_) => Ok(SearchMenuResult::Back),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_search_hit_display_multibyte() {
+        let conv = ConversationRecord {
+            id: "test-id".to_string(),
+            title: "تطوير أداة جديدة لإدارة المحادثات والمشاريع البرمجية".to_string(),
+            preview: "preview".to_string(),
+            step_count: 5,
+            last_modified_time: "2026-09-19 10:00:00".to_string(),
+            workspace_uris: vec![],
+            workspace_paths: vec![],
+        };
+        let hit = SearchHit {
+            conv,
+            turn_role: "user".to_string(),
+            snippet: "هذا النص يحتوي على أحرف عربية ورموز خاصة تفوق الطول المحدد بكثير".to_string(),
+        };
+        let formatted = format!("{}", hit);
+        assert!(!formatted.is_empty());
     }
 }
