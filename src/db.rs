@@ -1,6 +1,37 @@
 use chrono::{DateTime, Utc};
 use rusqlite::{Connection, OpenFlags};
+use std::fmt;
 use std::path::{Path, PathBuf};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TimeframeFilter {
+    AllTime,
+    Last24Hours,
+    Last7Days,
+    Last30Days,
+}
+
+impl fmt::Display for TimeframeFilter {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TimeframeFilter::AllTime => write!(f, "All Time"),
+            TimeframeFilter::Last24Hours => write!(f, "Last 24 Hours"),
+            TimeframeFilter::Last7Days => write!(f, "Last 7 Days"),
+            TimeframeFilter::Last30Days => write!(f, "Last 30 Days"),
+        }
+    }
+}
+
+impl TimeframeFilter {
+    pub fn next(&self) -> Self {
+        match self {
+            TimeframeFilter::AllTime => TimeframeFilter::Last24Hours,
+            TimeframeFilter::Last24Hours => TimeframeFilter::Last7Days,
+            TimeframeFilter::Last7Days => TimeframeFilter::Last30Days,
+            TimeframeFilter::Last30Days => TimeframeFilter::AllTime,
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
@@ -41,6 +72,32 @@ impl ConversationRecord {
             }
         }
         false
+    }
+
+    pub fn matches_timeframe(&self, filter: TimeframeFilter) -> bool {
+        if filter == TimeframeFilter::AllTime {
+            return true;
+        }
+
+        let ts_cleaned = self.last_modified_time.trim().replace(' ', "T");
+        let parsed = DateTime::parse_from_rfc3339(&ts_cleaned)
+            .map(|dt| dt.with_timezone(&Utc))
+            .or_else(|_| {
+                DateTime::parse_from_str(&self.last_modified_time, "%Y-%m-%d %H:%M:%S%.f%:z")
+                    .map(|dt| dt.with_timezone(&Utc))
+            });
+
+        if let Ok(dt) = parsed {
+            let duration = Utc::now().signed_duration_since(dt);
+            match filter {
+                TimeframeFilter::AllTime => true,
+                TimeframeFilter::Last24Hours => duration.num_hours() <= 24 && duration.num_seconds() >= 0,
+                TimeframeFilter::Last7Days => duration.num_days() <= 7 && duration.num_seconds() >= 0,
+                TimeframeFilter::Last30Days => duration.num_days() <= 30 && duration.num_seconds() >= 0,
+            }
+        } else {
+            true
+        }
     }
 
     pub fn primary_workspace_display(&self) -> String {

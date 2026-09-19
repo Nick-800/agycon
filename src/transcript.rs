@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct RawTranscriptEntry {
     pub step_index: Option<i64>,
     pub source: Option<String>,

@@ -93,7 +93,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let cwd = env::current_dir()?;
     let db_path = db::locate_db_path()?;
-    let conversations = db::load_conversations(&db_path)?;
+    let mut conversations = db::load_conversations(&db_path)?;
 
     // Determine initial filtering
     let filter_current = if cli.all {
@@ -136,7 +136,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Interactive UI
     banner::print_banner();
-    let result = ui::run_interactive_menu(&conversations, &cwd, filter_current, &mut config)?;
+    let result = ui::run_interactive_menu(&mut conversations, &cwd, &db_path, filter_current, &mut config)?;
 
     match result {
         ui::SelectionResult::StartNew => launcher::launch_new(),
